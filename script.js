@@ -3,6 +3,7 @@ const loopCart = document.querySelector(".cart--loop");
 const explosionsLayer = document.querySelector(".explosions");
 const streamTagline = document.querySelector(".stream-tagline");
 const brandBlock = document.querySelector(".brand-block");
+const scene = document.querySelector(".scene");
 
 const settings = {
   mainCartDuration: 5000,
@@ -14,13 +15,13 @@ const settings = {
   pathOffsetYRatio: 0.09,
   ellipseHeightScale: 1.35,
   arcLiftRatio: 0.2,
-  angle: 5,
+  angle: 7,
   loopCartDuration: 3600,
   loopEntryRatio: 0.28,
   loopCircleRatio: 0.4,
   loopEntryRiseRatio: 0.05,
   loopEntryCurveRatio: 0.22,
-  loopBaseYRatio: 0.37,
+  loopBaseYRatio: 0.34,
   loopCenterXRatio: 0.72,
   loopRadiusRatio: 0.18,
   loopVerticalScale: 1.22,
@@ -78,8 +79,9 @@ function easeInOut(t) {
 }
 
 function measurePath() {
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
+  const sceneRect = scene ? scene.getBoundingClientRect() : { width: window.innerWidth, height: window.innerHeight, left: 0, top: 0 };
+  const vw = sceneRect.width;
+  const vh = sceneRect.height;
   const rect = cart.getBoundingClientRect();
   const cartWidth = rect.width || Math.min(vw * 0.28, 420);
   const cartHeight = rect.height || cartWidth * 0.6;
@@ -114,9 +116,9 @@ function measurePath() {
 
   if (brandBlock) {
     const brandRect = brandBlock.getBoundingClientRect();
-    state.brandMainTriggerX = brandRect.right + settings.taglineMainTriggerXOffset;
-    state.brandLoopTriggerX = brandRect.left - settings.taglineLoopTriggerXOffset;
-    state.brandCenterY = brandRect.top + brandRect.height * 0.5;
+    state.brandMainTriggerX = brandRect.right - sceneRect.left + settings.taglineMainTriggerXOffset;
+    state.brandLoopTriggerX = brandRect.left - sceneRect.left - settings.taglineLoopTriggerXOffset;
+    state.brandCenterY = brandRect.top - sceneRect.top + brandRect.height * 0.5;
   }
 }
 
