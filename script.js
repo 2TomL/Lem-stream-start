@@ -1,6 +1,8 @@
 const cart = document.querySelector(".cart:not(.cart--loop)");
 const loopCart = document.querySelector(".cart--loop");
 const explosionsLayer = document.querySelector(".explosions");
+const streamTagline = document.querySelector(".stream-tagline");
+const brandBlock = document.querySelector(".brand-block");
 
 const settings = {
   mainCartDuration: 5000,
@@ -18,15 +20,21 @@ const settings = {
   loopCircleRatio: 0.4,
   loopEntryRiseRatio: 0.05,
   loopEntryCurveRatio: 0.22,
-  loopBaseYRatio: 0.35,
-  loopCenterXRatio: 0.65,
-  loopRadiusRatio: 0.12,
-  loopVerticalScale: 1.08,
+  loopBaseYRatio: 0.37,
+  loopCenterXRatio: 0.72,
+  loopRadiusRatio: 0.18,
+  loopVerticalScale: 1.22,
   loopPeakLiftRatio: 0.04,
   loopExitDropRatio: 0.05,
   loopExitArcRatio: 0.018,
   loopExitCurveRatio: 0.18,
-  loopTiltDeg: -2,
+  loopTiltDeg: -1,
+  loopExitTiltDeg: 2,
+  taglineMainTriggerXOffset: 90,
+  taglineLoopTriggerXOffset: 26,
+  taglineTriggerYRangeRatio: 0.24,
+  taglineWaveCooldown: 1200,
+  taglineWaveDuration: 1200,
   explosionMinDelay: 140,
   explosionMaxDelay: 420,
   explosionMinSize: 90,
@@ -55,6 +63,12 @@ const state = {
   loopJoinY: 0,
   loopExitY: 0,
   loopExitX: 0,
+  brandMainTriggerX: 0,
+  brandLoopTriggerX: 0,
+  brandCenterY: 0,
+  previousMainX: null,
+  previousLoopX: null,
+  lastTaglineWaveAt: -Infinity,
   startTime: performance.now(),
   explosionTimeoutId: null
 };
@@ -97,6 +111,87 @@ function measurePath() {
   state.loopJoinY = state.loopCenterY + state.loopRadiusY;
   state.loopExitY = state.loopJoinY + vh * settings.loopExitDropRatio;
   state.loopExitX = vw + loopCartWidth * 1.2;
+
+  if (brandBlock) {
+    const brandRect = brandBlock.getBoundingClientRect();
+    state.brandMainTriggerX = brandRect.right + settings.taglineMainTriggerXOffset;
+    state.brandLoopTriggerX = brandRect.left - settings.taglineLoopTriggerXOffset;
+    state.brandCenterY = brandRect.top + brandRect.height * 0.5;
+  }
+}
+
+function initTaglineWave() {
+  if (!streamTagline) {
+    return;
+  }
+
+  const text = streamTagline.textContent || "";
+  const fragment = document.createDocumentFragment();
+
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+
+    if (char === " ") {
+      fragment.appendChild(document.createTextNode(" "));
+      continue;
+    }
+
+    const span = document.createElement("span");
+    span.className = "char";
+    span.style.setProperty("--char-index", String(i));
+    span.textContent = char;
+    fragment.appendChild(span);
+  }
+
+  streamTagline.textContent = "";
+  streamTagline.appendChild(fragment);
+}
+
+function triggerTaglineWave(now) {
+  if (!streamTagline) {
+    return;
+  }
+
+  if (now - state.lastTaglineWaveAt < settings.taglineWaveCooldown) {
+    return;
+  }
+
+  state.lastTaglineWaveAt = now;
+  streamTagline.classList.remove("is-waving");
+  // Force restart zodat de wave opnieuw afspeelt bij volgende pass.
+  void streamTagline.offsetWidth;
+  streamTagline.classList.add("is-waving");
+
+  window.setTimeout(() => {
+    streamTagline.classList.remove("is-waving");
+  }, settings.taglineWaveDuration);
+}
+
+function shouldTriggerWave(previousX, currentX, currentY, direction) {
+  if (previousX === null || currentX === null) {
+    return false;
+  }
+
+  const yRange = state.viewportHeight * settings.taglineTriggerYRangeRatio;
+  const isNearBrandY = Math.abs(currentY - state.brandCenterY) <= yRange;
+
+  if (!isNearBrandY) {
+    return false;
+  }
+
+  if (direction === "left") {
+    if (!Number.isFinite(state.brandMainTriggerX)) {
+      return false;
+    }
+
+    return previousX > state.brandMainTriggerX && currentX <= state.brandMainTriggerX;
+  }
+
+  if (!Number.isFinite(state.brandLoopTriggerX)) {
+    return false;
+  }
+
+  return previousX < state.brandLoopTriggerX && currentX >= state.brandLoopTriggerX;
 }
 
 function lerp(start, end, t) {
@@ -254,6 +349,10 @@ function getLoopCartPosition(now) {
     const dx = cubicBezierDerivative(p0x, p1x, p2x, p3x, segmentT);
     const dy = cubicBezierDerivative(p0y, p1y, p2y, p3y, segmentT);
     angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+    // Laat de cart stijgen aan het einde van de looping
+    if (segmentT > 0.85) {
+      angle += settings.loopExitTiltDeg;
+    }
   }
 
   const tilted = rotatePointClockwise(x, y, settings.loopTiltDeg);
@@ -283,8 +382,15 @@ function animate(now) {
 
     cart.style.opacity = "1";
     cart.style.transform = `translate3d(${tilted.x}px, ${tilted.y}px, 0) rotate(${settings.angle}deg)`;
+
+    if (shouldTriggerWave(state.previousMainX, tilted.x, tilted.y, "left")) {
+      triggerTaglineWave(now);
+    }
+
+    state.previousMainX = tilted.x;
   } else {
     cart.style.opacity = "0";
+    state.previousMainX = null;
   }
 
   const loopCartPosition = getLoopCartPosition(now);
@@ -292,8 +398,15 @@ function animate(now) {
   if (loopCartPosition) {
     loopCart.style.opacity = "1";
     loopCart.style.transform = `translate3d(${loopCartPosition.x}px, ${loopCartPosition.y}px, 0) rotate(${loopCartPosition.angle}deg)`;
+
+    if (shouldTriggerWave(state.previousLoopX, loopCartPosition.x, loopCartPosition.y, "right")) {
+      triggerTaglineWave(now);
+    }
+
+    state.previousLoopX = loopCartPosition.x;
   } else {
     loopCart.style.opacity = "0";
+    state.previousLoopX = null;
   }
 
   requestAnimationFrame(animate);
@@ -302,11 +415,13 @@ function animate(now) {
 window.addEventListener("resize", measurePath);
 
 if (cart.complete) {
+  initTaglineWave();
   measurePath();
   scheduleExplosion();
   requestAnimationFrame(animate);
 } else {
   cart.addEventListener("load", () => {
+    initTaglineWave();
     measurePath();
     scheduleExplosion();
     requestAnimationFrame(animate);
